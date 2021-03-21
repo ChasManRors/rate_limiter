@@ -12,7 +12,7 @@ MINUTE = 1 # number of seconds
 
 # Create an API Rate Limiter
 class RateLimiter
-  attr_accessor :redis, :limit
+  attr_reader :redis, :limit, :rate_limiter_key
 
   def initialize
     # host = 'localhost'
@@ -23,13 +23,14 @@ class RateLimiter
     @limit = MAX_REQUESTS_PER_MINUTE # in seconds
     Redis.exists_returns_integer = true
     @redis = Redis.new
+    @rate_limiter_key = "#{apikey}:#{api_endpoint}"
   end
 
   # Assumption, every time this check is done if not over the limit an api call will be made.
   def over_limit?
     connect
-    redis.incr "#{apikey}:#{api_endpoint}"
-    redis.get("#{apikey}:#{api_endpoint}").to_i > limit
+    redis.incr rate_limiter_key
+    redis.get(rate_limiter_key).to_i > limit
   end
 
   def apikey
@@ -38,8 +39,8 @@ class RateLimiter
 
   # and there is still time before time interval expires
   def connected?
-    redis.exists("#{apikey}:#{api_endpoint}") == 1 &&
-      redis.ttl("#{apikey}:#{api_endpoint}").to_i.positive?
+    redis.exists(rate_limiter_key) == 1 &&
+      redis.ttl(rate_limiter_key).to_i.positive?
   end
 
   # Need to write Ruby Macro for Application's Controller to allow controller actions to be specified w/i controllers
@@ -48,16 +49,16 @@ class RateLimiter
   end
 
   def connect
-    redis.set("#{apikey}:#{api_endpoint}", 0, ex: MINUTE) unless connected?
+    redis.set(rate_limiter_key, 0, ex: MINUTE) unless connected?
   end
 
   def count
     return 0 unless connected? # TODO: Is this what we want to do?
 
-    redis.get("#{apikey}:#{api_endpoint}").to_i
+    redis.get(rate_limiter_key).to_i
   end
 
   def disconnect
-    redis.del("#{apikey}:#{api_endpoint}")
+    redis.del(rate_limiter_key)
   end
 end
